@@ -1,0 +1,69 @@
+{
+  "project_info": {
+    "project_number": "600164360732",
+    "firebase_url": "https://pingpong-697bf-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "pingpong-697bf",
+    "storage_bucket": "pingpong-697bf.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:600164360732:android:f79931f8b2131420f4f5d9",
+        "android_client_info": {
+          "package_name": "com.example.pingpong"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "600164360732-5qqp1njepcg3h43pt6t8sq0a6amnl1k8.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAEANDfg1Va4oxYH-QsKmC9HOCZnW_7-NQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "600164360732-5qqp1njepcg3h43pt6t8sq0a6amnl1k8.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:600164360732:android:505f2e29fff8ff0bf4f5d9",
+        "android_client_info": {
+          "package_name": "com.example.pong"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "600164360732-5qqp1njepcg3h43pt6t8sq0a6amnl1k8.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAEANDfg1Va4oxYH-QsKmC9HOCZnW_7-NQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "600164360732-5qqp1njepcg3h43pt6t8sq0a6amnl1k8.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
