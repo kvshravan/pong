@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:pingpong/exit-popup.dart';
+import 'package:pingpong/pages/game_page.dart';
 
 class HomePage extends StatefulWidget {
   HomePage({Key? key}) : super(key: key);
@@ -118,6 +119,16 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  void _navigatetoGame(uid, oppid) {
+    Navigator.push(
+        context,
+        MaterialPageRoute(
+            builder: (context) => GamePage(
+                  userid: uid,
+                  opponentid: oppid.toString().trim(),
+                )));
+  }
+
   void listenForRequests(String uid) async {
     final matchRequestref =
         FirebaseDatabase.instance.ref('users').child(uid).child('match');
@@ -125,6 +136,7 @@ class _HomePageState extends State<HomePage> {
       final playerId = event.snapshot.value;
       if (playerId != null && playerId != uid) {
         foundMatch = true;
+        _navigatetoGame(uid, playerId);
         gameListener.cancel();
         requestListener.cancel();
       }
@@ -189,11 +201,21 @@ class _HomePageState extends State<HomePage> {
         .child(uid)
         .child('match')
         .set(oppuid);
+    await removePlayerFromSearching(oppuid);
+    await removePlayerFromSearching(uid);
     return true;
   }
 
-  void releaseLock() async {
+  removePlayerFromSearching(uid) async {
+    await FirebaseDatabase.instance
+        .ref('activeUsers/searching')
+        .child(uid)
+        .remove();
+  }
+
+  Future<bool> releaseLock() async {
     await FirebaseDatabase.instance.ref('lock').set('available');
+    return true;
   }
 
   void removeRequestspath(String uid) async {
@@ -213,14 +235,30 @@ class _HomePageState extends State<HomePage> {
       setStatusSearching();
       // get the lock
       final lockRef = FirebaseDatabase.instance.ref('lock');
+      var userListener;
       gameListener = lockRef.onValue.listen((event) async {
         final lockStatus = event.snapshot.value;
         if (lockStatus != null && !foundMatch) {
+          if (userListener != null) {
+            userListener.cancel();
+          }
           if (lockStatus == "available") {
             setLock(uid);
           } else if (lockStatus == uid) {
             lockRef.onDisconnect().set("available");
             await findaPlayer(uid);
+          } else {
+            userListener = FirebaseDatabase.instance
+                .ref('users')
+                .child(lockStatus.toString().trim())
+                .child('status')
+                .onValue
+                .listen((event) async {
+              if (event.snapshot.value == false) {
+                await releaseLock();
+                userListener.cancel();
+              }
+            });
           }
         }
       });
