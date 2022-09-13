@@ -1,5 +1,5 @@
 import 'dart:async';
-
+import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
@@ -22,7 +22,9 @@ class _HomePageState extends State<HomePage> {
   List userDataList = [];
   bool foundMatch = false;
   bool searching = false;
+  bool hasLock = false;
   String opponentId = '';
+  String matchId = '';
   var gameListener;
   var requestListener;
   var activeUserListener;
@@ -58,11 +60,20 @@ class _HomePageState extends State<HomePage> {
     final connectedRef = FirebaseDatabase.instance.ref('.info/connected');
     final userstatusRef =
         FirebaseDatabase.instance.ref('users').child(uid).child('status');
+    final notPlayingref =
+        FirebaseDatabase.instance.ref('activeUsers/notPlaying').child(uid);
+    final isPlayingref =
+        FirebaseDatabase.instance.ref('activeUsers/isPlaying').child(uid);
+    final searchingref =
+        FirebaseDatabase.instance.ref('activeUsers/searching').child(uid);
     connectedRef.onValue.listen((event) {
       print(" In detect presence");
       if (event.snapshot.value == true) {
         setStatusOnline(uid);
         userstatusRef.onDisconnect().set(false);
+        searchingref.onDisconnect().remove();
+        notPlayingref.onDisconnect().remove();
+        isPlayingref.onDisconnect().remove();
       }
     });
   }
@@ -99,6 +110,10 @@ class _HomePageState extends State<HomePage> {
           .ref('activeUsers/isPlaying')
           .child(uid)
           .remove();
+      await FirebaseDatabase.instance
+          .ref('activeUsers/searching')
+          .child(uid)
+          .remove();
     }
     await FirebaseAuth.instance.signOut();
   }
@@ -119,28 +134,56 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  void _navigatetoGame(uid, oppid) {
+  void _navigatetoGame(uid, oppid, snapMatchId) {
     Navigator.push(
         context,
         MaterialPageRoute(
             builder: (context) => GamePage(
                   userid: uid,
                   opponentid: oppid.toString().trim(),
+                  matchid: snapMatchId,
                 )));
   }
 
   void listenForRequests(String uid) async {
     final matchRequestref =
         FirebaseDatabase.instance.ref('users').child(uid).child('match');
-    requestListener = matchRequestref.onValue.listen((event) {
+    requestListener = matchRequestref.onValue.listen((event) async {
       final playerId = event.snapshot.value;
       if (playerId != null && playerId != uid) {
         foundMatch = true;
-        _navigatetoGame(uid, playerId);
+        final snapMatchId = await FirebaseDatabase.instance
+            .ref('users')
+            .child(uid)
+            .child('matchid')
+            .get();
+        setState(() {
+          isLoading = false;
+        });
+        _navigatetoGame(uid, playerId, snapMatchId.value);
         gameListener.cancel();
         requestListener.cancel();
       }
     });
+  }
+
+  startMatch(uid, oppid) async {
+    final matchref = FirebaseDatabase.instance.ref('matches').push();
+    matchId = matchref.key!;
+    print(matchId);
+    await matchref.child('one').set(uid);
+    await matchref.child('two').set(oppid);
+    await matchref.child('time').set(DateTime.now().millisecondsSinceEpoch);
+    await FirebaseDatabase.instance
+        .ref('users')
+        .child(uid)
+        .child('matchid')
+        .set(matchId);
+    await FirebaseDatabase.instance
+        .ref('users')
+        .child(oppid)
+        .child('matchid')
+        .set(matchId);
   }
 
   Future<bool> findaPlayer(String uid) async {
@@ -191,6 +234,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<bool> setOpponent(uid, oppuid) async {
+    await startMatch(uid, oppuid);
     await FirebaseDatabase.instance
         .ref('users')
         .child(oppuid)
@@ -215,6 +259,7 @@ class _HomePageState extends State<HomePage> {
 
   Future<bool> releaseLock() async {
     await FirebaseDatabase.instance.ref('lock').set('available');
+    hasLock = false;
     return true;
   }
 
@@ -230,6 +275,7 @@ class _HomePageState extends State<HomePage> {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid != null) {
       foundMatch = false;
+      hasLock = false;
       removeRequestspath(uid);
       listenForRequests(uid);
       setStatusSearching();
@@ -245,8 +291,10 @@ class _HomePageState extends State<HomePage> {
           if (lockStatus == "available") {
             setLock(uid);
           } else if (lockStatus == uid) {
+            hasLock = true;
             lockRef.onDisconnect().set("available");
             await findaPlayer(uid);
+            lockRef.onDisconnect().cancel();
           } else {
             userListener = FirebaseDatabase.instance
                 .ref('users')
@@ -273,10 +321,26 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return WillPopScope(
-      onWillPop: () => showExitPopup(context),
+      onWillPop: () => showExitPopup(context, hasLock),
       child: Scaffold(
         appBar: AppBar(
+          iconTheme: IconThemeData(color: Colors.black),
           actions: [
+            IconButton(
+              onPressed: () async {
+                if (!isLoading) {
+                  setState(() {
+                    isLoading = true;
+                  });
+                  userDataList = [];
+                  getUserData(FirebaseAuth.instance.currentUser!.uid);
+                }
+              },
+              color: Colors.black,
+              focusColor: Colors.blue,
+              icon: const Icon(Icons.refresh),
+              tooltip: 'Refresh',
+            ),
             IconButton(
               onPressed: () {
                 signOut();
@@ -417,6 +481,9 @@ class _HomePageState extends State<HomePage> {
                           minWidth: 0.9 * MediaQuery.of(context).size.width,
                           height: 60,
                           onPressed: () async {
+                            setState(() {
+                              isLoading = true;
+                            });
                             await searchForGame();
                             print(opponentId);
                           },
@@ -424,11 +491,121 @@ class _HomePageState extends State<HomePage> {
                             'Search for a game',
                             style: whiteboldtextStyle,
                           )),
+                      Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Center(
+                            child: Text(
+                          'Recent Matches :',
+                          style: GoogleFonts.openSans(
+                            color: Colors.green,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 20,
+                            letterSpacing: .2,
+                          ),
+                        )),
+                      ),
+                      Expanded(
+                        child: FutureBuilder<List>(
+                          future: _getRecentMatches(),
+                          builder: (context, snapshot) {
+                            if (snapshot.hasData) {
+                              return Column(
+                                children: [
+                                  Padding(
+                                    padding: const EdgeInsets.all(8.0),
+                                    child: Container(
+                                      width: 40,
+                                      child: Divider(
+                                        thickness: 3.0,
+                                        height: 20,
+                                        color: Colors.grey,
+                                      ),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(8.0),
+                                      child: ListView.builder(
+                                        itemCount: snapshot.data!.length,
+                                        itemBuilder: (context, index) {
+                                          return Card(
+                                              color: Colors.white60,
+                                              shadowColor: Colors.white,
+                                              child: ListTile(
+                                                onTap: () {},
+                                                title: Text(
+                                                  snapshot.data![index]
+                                                      ['match'],
+                                                  style: GoogleFonts.openSans(
+                                                    color: Colors.black,
+                                                    fontWeight: FontWeight.w800,
+                                                    fontSize: 15,
+                                                    letterSpacing: .2,
+                                                  ),
+                                                ),
+                                                subtitle: Text(
+                                                  DateFormat('dd-MMM, hh:mm a')
+                                                      .format(DateTime
+                                                          .fromMillisecondsSinceEpoch(
+                                                              snapshot.data![
+                                                                      index]
+                                                                  ['time'])),
+                                                  style: GoogleFonts.openSans(
+                                                    color: Colors.black,
+                                                    fontWeight: FontWeight.w800,
+                                                    fontSize: 15,
+                                                    letterSpacing: .2,
+                                                  ),
+                                                ),
+                                              ));
+                                        },
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              );
+                            } else {
+                              return Center(child: CircularProgressIndicator());
+                            }
+                          },
+                        ),
+                      )
                     ],
                   ),
                 ),
               ),
       ),
     );
+  }
+
+  Future<List> _getRecentMatches() async {
+    List recentMatches = [];
+    final query = FirebaseDatabase.instance
+        .ref('matches')
+        .orderByChild('time')
+        .limitToLast(10);
+    final snapshot = await query.get();
+    if (snapshot.exists) {
+      for (var match in snapshot.children) {
+        final opponentSnapshot = await FirebaseDatabase.instance
+            .ref('users')
+            .child(match.child('two').value.toString())
+            .child('name')
+            .get();
+        final userSnapshot = await FirebaseDatabase.instance
+            .ref('users')
+            .child(match.child('one').value.toString())
+            .child('name')
+            .get();
+        final matchString = opponentSnapshot.value.toString() +
+            ' vs ' +
+            userSnapshot.value.toString();
+        recentMatches.add({
+          'match': matchString,
+          'time': int.parse(match.child('time').value.toString())
+        });
+      }
+    }
+    return recentMatches.reversed.toList();
   }
 }
